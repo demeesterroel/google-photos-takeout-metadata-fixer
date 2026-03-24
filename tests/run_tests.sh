@@ -26,7 +26,7 @@ cd "$(dirname "$0")"
 # Create test data if needed
 if [ ! -d "test_data" ]; then
     echo "Creating test data..."
-    python3 create_test_data.py
+    python3 test_fix_metadata_setup.py
 fi
 
 # Run tests

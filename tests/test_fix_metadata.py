@@ -22,7 +22,7 @@ def ensure_test_data():
     if not TEST_DATA_DIR.exists():
         print("Test data not found, creating...")
         result = subprocess.run(
-            [sys.executable, Path(__file__).parent / "create_test_data.py"],
+            [sys.executable, Path(__file__).parent / "test_fix_metadata_setup.py"],
             capture_output=True, text=True
         )
         if result.returncode != 0:

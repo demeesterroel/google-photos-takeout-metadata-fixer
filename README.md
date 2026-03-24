@@ -455,4 +455,4 @@ MIT License - use freely for personal or commercial purposes.
 
 ---
 
-*Made in 2025, a time when many are reconsidering where their personal data lives.*
+*Made in 2026, a time when many are reconsidering where their personal data lives.*

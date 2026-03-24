@@ -2,6 +2,7 @@
 *_report.txt
 *.pyc
 __pycache__/
+tests/test_data/
 
 # OS files
 .DS_Store

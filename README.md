@@ -34,7 +34,7 @@ sudo apt install libimage-exiftool-perl  # Ubuntu/Debian
 brew install exiftool                     # macOS
 
 # Download the script
-git clone https://github.com/yourusername/google-photos-takeout-metadata-fixer.git
+git clone https://github.com/demeesterroel/google-photos-takeout-metadata-fixer.git
 cd google-photos-takeout-metadata-fixer
 
 # Preview changes (dry run)
@@ -199,11 +199,11 @@ pip install Pillow
 ### Download
 
 ```bash
-git clone https://github.com/yourusername/google-photos-takeout-metadata-fixer.git
+git clone https://github.com/demeesterroel/google-photos-takeout-metadata-fixer.git
 cd google-photos-takeout-metadata-fixer
 ```
 
-Or download just `fix_metadata.py` directly.
+Or download just [`fix_metadata.py`](fix_metadata.py) directly.
 
 ## Running Tests
 

@@ -182,16 +182,18 @@ This script is inspired by and builds upon:
 
 - **Python 3.9+** (uses modern type hints)
 - **ExifTool** by Phil Harvey ([exiftool.org](https://exiftool.org/))
+- **Pillow** (for running tests only)
 
 ```bash
 # Ubuntu/Debian
-sudo apt install libimage-exiftool-perl python3
+sudo apt install libimage-exiftool-perl python3 python3-pil
 
 # macOS
-brew install exiftool python3
+brew install exiftool python3 pillow
 
 # Windows (via Chocolatey)
 choco install exiftool python
+pip install Pillow
 ```
 
 ### Download
@@ -202,6 +204,25 @@ cd google-photos-takeout-metadata-fixer
 ```
 
 Or download just `fix_metadata.py` directly.
+
+## Running Tests
+
+```bash
+cd tests
+./run_tests.sh
+# or
+python3 -m pytest test_fix_metadata.py -v
+```
+
+Tests cover:
+- Standard JSON matching
+- Truncated supplemental-metadata patterns
+- Edited file variants (`-edited`, `-EDIT`)
+- Version files (`~2`, `~3`)
+- Duplicate patterns (`(1)`, `(2)`)
+- Bokeh/portrait files
+- Original UUID files
+- Timezone difference detection
 
 ## Usage
 

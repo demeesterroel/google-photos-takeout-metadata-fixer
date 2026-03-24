@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Unit tests for fix_metadata.py"""
-import json
-import os
-import shutil
 import subprocess
+import sys
 from pathlib import Path
 import pytest
-import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fix_metadata import (
@@ -19,34 +16,21 @@ from fix_metadata import (
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
 
 
-def create_test_image(path: Path, width: int = 100, height: int = 100):
-    """Create a valid test image using PIL."""
-    from PIL import Image
-    img = Image.new('RGB', (width, height), color='red')
-    img.save(str(path), 'JPEG', quality=85)
-
-
-def set_exif_date(path: Path, exif_date: str):
-    """Set EXIF date using exiftool."""
-    result = subprocess.run(
-        ['exiftool', '-overwrite_original', f'-DateTimeOriginal={exif_date}', str(path)],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        pytest.fail(f"Failed to set EXIF date: {result.stderr}")
-
-
-def create_test_json(path: Path, timestamp: int, lat: float = 0.0, lon: float = 0.0):
-    """Create a Google Photos JSON sidecar file."""
-    data = {
-        "photoTakenTime": {"timestamp": str(timestamp)},
-        "geoData": {"latitude": lat, "longitude": lon}
-    }
-    path.write_text(json.dumps(data))
+def ensure_test_data():
+    """Ensure test data exists, create if needed."""
+    if not TEST_DATA_DIR.exists():
+        print("Test data not found, creating...")
+        result = subprocess.run(
+            [sys.executable, Path(__file__).parent / "create_test_data.py"],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            pytest.fail(f"Failed to create test data: {result.stderr}")
 
 
 def build_all_files_dict():
     """Build all_files dict like os.walk would (filename -> Path)."""
+    ensure_test_data()
     all_files = {}
     for f in TEST_DATA_DIR.iterdir():
         all_files[f.name] = f
@@ -55,69 +39,8 @@ def build_all_files_dict():
 
 @pytest.fixture(scope="module")
 def setup_test_data():
-    """Set up test data directory with various scenarios."""
-    try:
-        from PIL import Image
-    except ImportError:
-        pytest.skip("PIL/Pillow not installed, skipping tests")
-    
-    if TEST_DATA_DIR.exists():
-        shutil.rmtree(TEST_DATA_DIR)
-    TEST_DATA_DIR.mkdir(parents=True)
-    
-    create_test_image(TEST_DATA_DIR / "standard.jpg")
-    set_exif_date(TEST_DATA_DIR / "standard.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "standard.jpg.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "no_exif.jpg")
-    create_test_json(TEST_DATA_DIR / "no_exif.jpg.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "timezone.jpg")
-    set_exif_date(TEST_DATA_DIR / "timezone.jpg", "2024:01:15 11:30:00")
-    create_test_json(TEST_DATA_DIR / "timezone.jpg.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "photo-edited.jpg")
-    set_exif_date(TEST_DATA_DIR / "photo-edited.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "photo.jpg.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "long_filename_test_image.jpg")
-    set_exif_date(TEST_DATA_DIR / "long_filename_test_image.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "long_filename_test_image.jpg.supplemental-met.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "version~2.jpg")
-    set_exif_date(TEST_DATA_DIR / "version~2.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "version.jpg.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "duplicate(1).jpg")
-    set_exif_date(TEST_DATA_DIR / "duplicate(1).jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "duplicate.jpg(1).json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "bokeh.jpg")
-    set_exif_date(TEST_DATA_DIR / "bokeh.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "bokeh.jpg.supplemental-metadata.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "IMG_20240115_123000_Bokeh.jpg")
-    set_exif_date(TEST_DATA_DIR / "IMG_20240115_123000_Bokeh.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "IMG_20240115_123000_Bokeh.jpg.supplemental-m.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "no_json.jpg")
-    set_exif_date(TEST_DATA_DIR / "no_json.jpg", "2024:01:15 10:30:00")
-    
-    create_test_image(TEST_DATA_DIR / "with_gps.jpg")
-    set_exif_date(TEST_DATA_DIR / "with_gps.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "with_gps.jpg.json", 1705311000, lat=51.5074, lon=-0.1278)
-    
-    create_test_image(TEST_DATA_DIR / "original_abc123_I.jpg")
-    set_exif_date(TEST_DATA_DIR / "original_abc123_I.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "original_abc123_.json", 1705311000)
-    
-    create_test_image(TEST_DATA_DIR / "signal-2024-01-15-12-00-00-123.jpg")
-    set_exif_date(TEST_DATA_DIR / "signal-2024-01-15-12-00-00-123.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "signal-2024-01-15-12-00-00-123.jpg.supplementa.json", 1705311000)
-    
-    yield build_all_files_dict()
-    
-    shutil.rmtree(TEST_DATA_DIR)
+    """Ensure test data exists and return all_files dict."""
+    return build_all_files_dict()
 
 
 class TestFindJsonForFile:
@@ -215,6 +138,7 @@ class TestAnalyzeDirectory:
     """Tests for analyze_directory function."""
     
     def test_analyze_returns_correct_structure(self, setup_test_data):
+        ensure_test_data()
         stats = analyze_directory(TEST_DATA_DIR, progress=False)
         assert "total" in stats
         assert "correct" in stats
@@ -223,6 +147,7 @@ class TestAnalyzeDirectory:
         assert "no_json" in stats
     
     def test_analyze_counts_correctly(self, setup_test_data):
+        ensure_test_data()
         stats = analyze_directory(TEST_DATA_DIR, progress=False)
         assert stats["total"] == 13
         assert len(stats["no_json"]) == 1

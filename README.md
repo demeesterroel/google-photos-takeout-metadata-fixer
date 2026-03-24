@@ -6,7 +6,7 @@ A Python script to fix EXIF metadata in Google Photos Takeout exports using the 
 
 Google Photos Takeout exports your photos and videos, but the EXIF metadata (dates, GPS, descriptions) is stored in separate JSON files rather than embedded in the images. When you move your photos to another platform or organize them by date, the metadata is lost or incorrect.
 
-**In 2024-2025, many people are reconsidering their data storage choices** - moving away from US-based cloud services to self-hosted or EU-based alternatives (Nextcloud, PhotoPrism, Immich, etc.). This script helps ensure your photo library retains its correct dates and locations when making that transition.
+**In 2026, many people are reconsidering their data storage choices** - moving away from US-based cloud services to self-hosted or EU-based alternatives (Nextcloud, PhotoPrism, Immich, etc.). This script helps ensure your photo library retains its correct dates and locations when making that transition.
 
 ## Table of Contents
 

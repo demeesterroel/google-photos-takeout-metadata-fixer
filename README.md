@@ -278,19 +278,19 @@ options:
 
 ```bash
 # Preview what would change (dry run)
-python3 fix_metadata.py '~/Takeout/Google Photos/Photos from 2024' --no-extract --dryrun
+python3 fix_metadata.py '../Takeout/Google Photos/Photos from 2024' --no-extract --dryrun
 
 # Show summary of a folder
-python3 fix_metadata.py '~/Takeout/Google Photos/Photos from 2024' --no-extract --summary
+python3 fix_metadata.py '../Takeout/Google Photos/Photos from 2024' --no-extract --summary
 
 # Generate detailed report
-python3 fix_metadata.py '~/Takeout/Google Photos/Photos from 2024' --no-extract --report
+python3 fix_metadata.py '../Takeout/Google Photos/Photos from 2024' --no-extract --report
 
 # Fix metadata (preserve timezone differences)
-python3 fix_metadata.py '~/Takeout/Google Photos/Photos from 2024' --no-extract
+python3 fix_metadata.py '../Takeout/Google Photos/Photos from 2024' --no-extract
 
 # Fix metadata AND overwrite timezone differences
-python3 fix_metadata.py '~/Takeout/Google Photos/Photos from 2024' --no-extract --force-tz
+python3 fix_metadata.py '../Takeout/Google Photos/Photos from 2024' --no-extract --force-tz
 
 # Process directly from downloaded zip
 python3 fix_metadata.py '~/Downloads/takeout-20240101.zip'
@@ -324,7 +324,7 @@ Total files:                       2189
 ### Report Output
 
 ```bash
-python3 fix_metadata.py '~/Takeout/Google Photos/Photos from 2024' --no-extract --report my_report.txt
+python3 fix_metadata.py '../Takeout/Google Photos/Photos from 2024' --no-extract --report my_report.txt
 ```
 
 Creates a detailed report with:

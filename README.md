@@ -29,22 +29,32 @@ Google Photos Takeout exports your photos and videos, but the EXIF metadata (dat
 ## Quick Start
 
 ```bash
-# Install exiftool (required)
-sudo apt install libimage-exiftool-perl  # Ubuntu/Debian
-brew install exiftool                     # macOS
+# 1. Download your Google Photos Takeout
+#    - Go to https://takeout.google.com
+#    - Select only "Photos" for faster export
+#    - Download all zip files to a folder (e.g., ~/Downloads/takeout)
 
-# Download the script
+# 2. Unzip all files (install parallel if needed: sudo apt install parallel)
+cd ~/Downloads/takeout
+parallel unzip -q {} -d ~/Pictures/Takeout ::: *.zip
+
+# 3. Get this script
+cd ~/Pictures/Takeout
 git clone https://github.com/demeesterroel/google-photos-takeout-metadata-fixer.git
 cd google-photos-takeout-metadata-fixer
 
-# Preview changes (dry run)
-python3 fix_metadata.py '/path/to/Takeout/Google Photos' --no-extract --dryrun
+# 4. Install exiftool (required)
+sudo apt install libimage-exiftool-perl  # Ubuntu/Debian
+brew install exiftool                     # macOS
 
-# Show summary statistics
-python3 fix_metadata.py '/path/to/Takeout/Google Photos' --no-extract --summary
+# 5. Preview changes (dry run)
+python3 fix_metadata.py '../Takeout/Google Photos' --no-extract --dryrun
 
-# Actually fix the metadata
-python3 fix_metadata.py '/path/to/Takeout/Google Photos' --no-extract
+# 6. Show summary statistics
+python3 fix_metadata.py '../Takeout/Google Photos' --no-extract --summary
+
+# 7. Actually fix the metadata (uncomment to run)
+# python3 fix_metadata.py '../Takeout/Google Photos' --no-extract
 ```
 
 ## Background

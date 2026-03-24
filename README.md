@@ -183,8 +183,9 @@ This script is inspired by and builds upon:
 | **`~N` version files** | Yes | No |
 | **`_Bokeh` portrait files** | Yes | No |
 | **`original_<uuid>_I` files** | Yes | No |
+| **Date handling** | Write if different | Write only if empty |
 | **Timezone preservation** | Yes (optional) | No |
-| **GPS handling** | Only writes if different | Always overwrites |
+| **GPS handling** | Yes, only if different/missing | Not handled |
 | **Separate date/GPS tracking** | Yes | No |
 | **Progress feedback** | Yes | Limited |
 | **Batch EXIF reading** | Yes (faster) | Per-file calls |

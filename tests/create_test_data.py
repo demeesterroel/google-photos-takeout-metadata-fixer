@@ -26,12 +26,32 @@ def set_exif_date(path: Path, exif_date: str):
         sys.exit(1)
 
 
-def create_test_json(path: Path, timestamp: int, lat: float = 0.0, lon: float = 0.0):
+def set_exif_gps(path: Path, lat: float, lon: float):
+    """Set EXIF GPS using exiftool."""
+    lat_ref = 'N' if lat >= 0 else 'S'
+    lon_ref = 'E' if lon >= 0 else 'W'
+    result = subprocess.run(
+        ['exiftool', '-overwrite_original',
+         f'-GPSLatitude={abs(lat)}',
+         f'-GPSLatitudeRef={lat_ref}',
+         f'-GPSLongitude={abs(lon)}',
+         f'-GPSLongitudeRef={lon_ref}',
+         str(path)],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        print(f"Error setting EXIF GPS: {result.stderr}")
+        sys.exit(1)
+
+
+def create_test_json(path: Path, timestamp: int, lat: float = 0.0, lon: float = 0.0, description: str = ""):
     """Create a Google Photos JSON sidecar file."""
     data = {
         "photoTakenTime": {"timestamp": str(timestamp)},
         "geoData": {"latitude": lat, "longitude": lon}
     }
+    if description:
+        data["description"] = description
     path.write_text(json.dumps(data))
 
 
@@ -50,68 +70,119 @@ def main():
     TEST_DATA_DIR.mkdir(parents=True)
     print(f"Creating test data in: {TEST_DATA_DIR}")
     
-    create_test_image(TEST_DATA_DIR / "standard.jpg")
-    set_exif_date(TEST_DATA_DIR / "standard.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "standard.jpg.json", 1705311000)
-    print("  Created: standard.jpg + JSON")
+    # Standard file with matching EXIF and JSON (no GPS)
+    create_test_image(TEST_DATA_DIR / "correct.jpg")
+    set_exif_date(TEST_DATA_DIR / "correct.jpg", "2024:01:15 09:30:00")
+    create_test_json(TEST_DATA_DIR / "correct.jpg.json", 1705311000)
+    print("  Created: correct.jpg (dates match, no GPS)")
     
-    create_test_image(TEST_DATA_DIR / "no_exif.jpg")
-    create_test_json(TEST_DATA_DIR / "no_exif.jpg.json", 1705311000)
-    print("  Created: no_exif.jpg + JSON (no EXIF)")
+    # File needing date update (no EXIF)
+    create_test_image(TEST_DATA_DIR / "need_date.jpg")
+    create_test_json(TEST_DATA_DIR / "need_date.jpg.json", 1705311000)
+    print("  Created: need_date.jpg (no EXIF date)")
     
+    # File needing date update (different dates)
+    create_test_image(TEST_DATA_DIR / "wrong_date.jpg")
+    set_exif_date(TEST_DATA_DIR / "wrong_date.jpg", "2024:01:20 10:00:00")
+    create_test_json(TEST_DATA_DIR / "wrong_date.jpg.json", 1705311000)
+    print("  Created: wrong_date.jpg (wrong EXIF date)")
+    
+    # Timezone difference (dates preserved)
     create_test_image(TEST_DATA_DIR / "timezone.jpg")
-    set_exif_date(TEST_DATA_DIR / "timezone.jpg", "2024:01:15 11:30:00")
+    set_exif_date(TEST_DATA_DIR / "timezone.jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "timezone.jpg.json", 1705311000)
-    print("  Created: timezone.jpg + JSON (1hr difference)")
+    print("  Created: timezone.jpg (1hr timezone diff)")
     
+    # GPS only update (dates match, no EXIF GPS, JSON has GPS)
+    create_test_image(TEST_DATA_DIR / "need_gps.jpg")
+    set_exif_date(TEST_DATA_DIR / "need_gps.jpg", "2024:01:15 09:30:00")
+    create_test_json(TEST_DATA_DIR / "need_gps.jpg.json", 1705311000, lat=51.5074, lon=-0.1278)
+    print("  Created: need_gps.jpg (needs GPS only)")
+    
+    # GPS differs (dates match, EXIF GPS != JSON GPS)
+    create_test_image(TEST_DATA_DIR / "gps_differs.jpg")
+    set_exif_date(TEST_DATA_DIR / "gps_differs.jpg", "2024:01:15 09:30:00")
+    set_exif_gps(TEST_DATA_DIR / "gps_differs.jpg", lat=48.8566, lon=2.3522)
+    create_test_json(TEST_DATA_DIR / "gps_differs.jpg.json", 1705311000, lat=51.5074, lon=-0.1278)
+    print("  Created: gps_differs.jpg (GPS differs)")
+    
+    # Both date and GPS need update
+    create_test_image(TEST_DATA_DIR / "need_both.jpg")
+    create_test_json(TEST_DATA_DIR / "need_both.jpg.json", 1705311000, lat=51.5074, lon=-0.1278)
+    print("  Created: need_both.jpg (needs date and GPS)")
+    
+    # Timezone diff + GPS differs
+    create_test_image(TEST_DATA_DIR / "tz_gps_diff.jpg")
+    set_exif_date(TEST_DATA_DIR / "tz_gps_diff.jpg", "2024:01:15 10:30:00")
+    set_exif_gps(TEST_DATA_DIR / "tz_gps_diff.jpg", lat=48.8566, lon=2.3522)
+    create_test_json(TEST_DATA_DIR / "tz_gps_diff.jpg.json", 1705311000, lat=51.5074, lon=-0.1278)
+    print("  Created: tz_gps_diff.jpg (timezone + GPS differs)")
+    
+    # GPS already correct (dates match, GPS matches)
+    create_test_image(TEST_DATA_DIR / "gps_correct.jpg")
+    set_exif_date(TEST_DATA_DIR / "gps_correct.jpg", "2024:01:15 09:30:00")
+    set_exif_gps(TEST_DATA_DIR / "gps_correct.jpg", lat=51.5074, lon=-0.1278)
+    create_test_json(TEST_DATA_DIR / "gps_correct.jpg.json", 1705311000, lat=51.5074, lon=-0.1278)
+    print("  Created: gps_correct.jpg (GPS already correct)")
+    
+    # Edited file variant (-edited suffix)
     create_test_image(TEST_DATA_DIR / "photo-edited.jpg")
     set_exif_date(TEST_DATA_DIR / "photo-edited.jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "photo.jpg.json", 1705311000)
     print("  Created: photo-edited.jpg + photo.jpg.json (-edited match)")
     
+    # Truncated supplemental JSON
     create_test_image(TEST_DATA_DIR / "long_filename_test_image.jpg")
     set_exif_date(TEST_DATA_DIR / "long_filename_test_image.jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "long_filename_test_image.jpg.supplemental-met.json", 1705311000)
     print("  Created: long_filename_test_image.jpg (truncated supplemental)")
     
+    # Version file (~N suffix)
     create_test_image(TEST_DATA_DIR / "version~2.jpg")
     set_exif_date(TEST_DATA_DIR / "version~2.jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "version.jpg.json", 1705311000)
     print("  Created: version~2.jpg + version.jpg.json (~N match)")
     
+    # Duplicate file ((1) suffix)
     create_test_image(TEST_DATA_DIR / "duplicate(1).jpg")
     set_exif_date(TEST_DATA_DIR / "duplicate(1).jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "duplicate.jpg(1).json", 1705311000)
     print("  Created: duplicate(1).jpg + duplicate.jpg(1).json")
     
+    # Bokeh/Portrait file (supplemental-metadata)
     create_test_image(TEST_DATA_DIR / "bokeh.jpg")
     set_exif_date(TEST_DATA_DIR / "bokeh.jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "bokeh.jpg.supplemental-metadata.json", 1705311000)
     print("  Created: bokeh.jpg (supplemental-metadata)")
     
+    # Truncated Bokeh supplemental
     create_test_image(TEST_DATA_DIR / "IMG_20240115_123000_Bokeh.jpg")
     set_exif_date(TEST_DATA_DIR / "IMG_20240115_123000_Bokeh.jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "IMG_20240115_123000_Bokeh.jpg.supplemental-m.json", 1705311000)
     print("  Created: IMG_..._Bokeh.jpg (truncated Bokeh supplemental)")
     
+    # No matching JSON
     create_test_image(TEST_DATA_DIR / "no_json.jpg")
     set_exif_date(TEST_DATA_DIR / "no_json.jpg", "2024:01:15 10:30:00")
     print("  Created: no_json.jpg (no matching JSON)")
     
-    create_test_image(TEST_DATA_DIR / "with_gps.jpg")
-    set_exif_date(TEST_DATA_DIR / "with_gps.jpg", "2024:01:15 10:30:00")
-    create_test_json(TEST_DATA_DIR / "with_gps.jpg.json", 1705311000, lat=51.5074, lon=-0.1278)
-    print("  Created: with_gps.jpg (with GPS data)")
-    
+    # Original UUID file
     create_test_image(TEST_DATA_DIR / "original_abc123_I.jpg")
     set_exif_date(TEST_DATA_DIR / "original_abc123_I.jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "original_abc123_.json", 1705311000)
     print("  Created: original_abc123_I.jpg + original_abc123_.json")
     
+    # Signal app truncated
     create_test_image(TEST_DATA_DIR / "signal-2024-01-15-12-00-00-123.jpg")
     set_exif_date(TEST_DATA_DIR / "signal-2024-01-15-12-00-00-123.jpg", "2024:01:15 10:30:00")
     create_test_json(TEST_DATA_DIR / "signal-2024-01-15-12-00-00-123.jpg.supplementa.json", 1705311000)
     print("  Created: signal-...jpg (truncated supplemental)")
+    
+    # With description
+    create_test_image(TEST_DATA_DIR / "with_desc.jpg")
+    set_exif_date(TEST_DATA_DIR / "with_desc.jpg", "2024:01:15 09:30:00")
+    create_test_json(TEST_DATA_DIR / "with_desc.jpg.json", 1705311000, description="Beach vacation")
+    print("  Created: with_desc.jpg (with description)")
     
     print(f"\nTest data created successfully in {TEST_DATA_DIR}")
     print(f"Total files: {len(list(TEST_DATA_DIR.iterdir()))}")

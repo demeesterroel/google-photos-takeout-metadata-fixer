@@ -184,6 +184,8 @@ This script is inspired by and builds upon:
 | **`_Bokeh` portrait files** | Yes | No |
 | **`original_<uuid>_I` files** | Yes | No |
 | **Timezone preservation** | Yes (optional) | No |
+| **GPS handling** | Only writes if different | Always overwrites |
+| **Separate date/GPS tracking** | Yes | No |
 | **Progress feedback** | Yes | Limited |
 | **Batch EXIF reading** | Yes (faster) | Per-file calls |
 | **Summary/Report modes** | Yes | No |

@@ -11,6 +11,7 @@ from fix_metadata import (
     parse_timestamp,
     is_timezone_difference,
     analyze_directory,
+    get_json_gps,
 )
 
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
@@ -48,9 +49,9 @@ class TestFindJsonForFile:
     
     def test_standard_match(self, setup_test_data):
         all_files = setup_test_data
-        result = find_json_for_file(all_files["standard.jpg"], all_files)
+        result = find_json_for_file(all_files["correct.jpg"], all_files)
         assert result is not None
-        assert result.name == "standard.jpg.json"
+        assert result.name == "correct.jpg.json"
     
     def test_supplemental_metadata(self, setup_test_data):
         all_files = setup_test_data
@@ -134,6 +135,28 @@ class TestTimezoneDifference:
         assert is_timezone_difference("2024:01:16 00:30:00", "2024:01:15 10:30:00") == True
 
 
+class TestGetJsonGps:
+    """Tests for get_json_gps function."""
+    
+    def test_gps_present(self, setup_test_data):
+        ensure_test_data()
+        result = get_json_gps(TEST_DATA_DIR / "need_gps.jpg.json")
+        assert result is not None
+        lat, lon = result
+        assert abs(lat - 51.5074) < 0.0001
+        assert abs(lon - (-0.1278)) < 0.0001
+    
+    def test_gps_absent(self, setup_test_data):
+        ensure_test_data()
+        result = get_json_gps(TEST_DATA_DIR / "correct.jpg.json")
+        assert result is None
+    
+    def test_gps_both_zero(self, setup_test_data):
+        ensure_test_data()
+        result = get_json_gps(TEST_DATA_DIR / "timezone.jpg.json")
+        assert result is None
+
+
 class TestAnalyzeDirectory:
     """Tests for analyze_directory function."""
     
@@ -146,13 +169,56 @@ class TestAnalyzeDirectory:
         assert "need_date" in stats
         assert "need_gps" in stats
         assert "need_both" in stats
+        assert "tz_gps_diff" in stats
         assert "no_json" in stats
     
     def test_analyze_counts_correctly(self, setup_test_data):
         ensure_test_data()
         stats = analyze_directory(TEST_DATA_DIR, progress=False)
-        assert stats["total"] == 13
+        assert stats["total"] == 19
         assert len(stats["no_json"]) == 1
+    
+    def test_correct_file_has_no_updates(self, setup_test_data):
+        ensure_test_data()
+        stats = analyze_directory(TEST_DATA_DIR, progress=False)
+        correct_names = [item[0] for item in stats["correct"]]
+        assert "correct.jpg" in correct_names
+    
+    def test_need_date_detected(self, setup_test_data):
+        ensure_test_data()
+        stats = analyze_directory(TEST_DATA_DIR, progress=False)
+        need_date_names = [item[0] for item in stats["need_date"]]
+        assert "need_date.jpg" in need_date_names
+        assert "wrong_date.jpg" in need_date_names
+    
+    def test_need_gps_detected(self, setup_test_data):
+        ensure_test_data()
+        stats = analyze_directory(TEST_DATA_DIR, progress=False)
+        need_gps_names = [item[0] for item in stats["need_gps"]]
+        assert "need_gps.jpg" in need_gps_names
+    
+    def test_gps_correct_not_in_need_lists(self, setup_test_data):
+        ensure_test_data()
+        stats = analyze_directory(TEST_DATA_DIR, progress=False)
+        all_update_names = (
+            [item[0] for item in stats["need_date"]] +
+            [item[0] for item in stats["need_gps"]] +
+            [item[0] for item in stats["need_both"]] +
+            [item[0] for item in stats["tz_gps_diff"]]
+        )
+        assert "gps_correct.jpg" not in all_update_names
+    
+    def test_timezone_preserved_detected(self, setup_test_data):
+        ensure_test_data()
+        stats = analyze_directory(TEST_DATA_DIR, progress=False)
+        tz_names = [item[0] for item in stats["timezone_preserved"]]
+        assert "timezone.jpg" in tz_names
+    
+    def test_tz_gps_diff_detected(self, setup_test_data):
+        ensure_test_data()
+        stats = analyze_directory(TEST_DATA_DIR, progress=False)
+        tz_gps_names = [item[0] for item in stats["tz_gps_diff"]]
+        assert "tz_gps_diff.jpg" in tz_gps_names
 
 
 if __name__ == "__main__":

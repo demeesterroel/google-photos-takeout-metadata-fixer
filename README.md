@@ -369,6 +369,23 @@ Creating a separate repository allows this project to evolve independently while
 - **This script** if you want Python, in-place edits, speed, and timezone awareness
 - **Original scripts** if you prefer Node.js and want copies organized into output directories
 
+## Disclaimer
+
+**This script has only been tested on the author's personal photo library: ~20,000 files spanning 10 years of Google Photos exports.**
+
+While it handles many edge cases discovered in that library, your Takeout may contain different naming patterns or edge cases not yet covered.
+
+**Recommendations:**
+1. **Always backup your photos** before running this script
+2. Run `--dryrun` first to preview changes
+3. Test on a small folder before running on your entire library
+4. Check the `--report` output to verify matches before committing
+
+If you encounter edge cases not handled, please open an issue with:
+- The filename pattern
+- Expected JSON filename
+- Whether the JSON file exists but wasn't matched
+
 ## Contributing
 
 Contributions welcome! Particularly:

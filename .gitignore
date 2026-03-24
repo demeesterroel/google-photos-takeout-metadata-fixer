@@ -17,6 +17,3 @@ Takeout/
 takeout/
 input/
 output/
-
-# Development helpers
-compare_dates.py

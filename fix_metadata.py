@@ -88,6 +88,14 @@ def find_json_for_file(media_file: Path, all_files: dict) -> Path | None:
                     return all_files[js]
     
     for i in range(1, 100):
+        if stem.endswith(f'({i})'):
+            base_stem = stem[:-len(f'({i})')]
+            base_with_ext = f"{base_stem}{suffix}"
+            dupe_json = f"{base_with_ext}({i}).json"
+            if dupe_json in all_files:
+                return all_files[dupe_json]
+    
+    for i in range(1, 100):
         dupe_pattern1 = f"{stem}({i}){suffix}.json"
         dupe_pattern2 = f"{stem}({i}).json"
         if dupe_pattern1 in all_files:
@@ -139,7 +147,7 @@ def is_timezone_difference(exif_date: str, json_date: str) -> bool:
     if exif_mins is None or json_mins is None:
         return False
     diff_mins = abs(exif_mins - json_mins)
-    return diff_mins <= 14 * 60
+    return diff_mins > 0 and diff_mins <= 14 * 60
 
 def get_current_exif_date(media_path: Path) -> str | None:
     """Get current DateTimeOriginal from file, return None if not found."""

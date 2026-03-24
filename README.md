@@ -85,10 +85,28 @@ For each media file in your Takeout:
 
 1. **Finds the matching JSON file** (handles various Google naming quirks)
 2. **Extracts the embedded metadata** from the JSON
-3. **Writes to EXIF fields**: DateTimeOriginal, CreateDate, ModifyDate
-4. **Writes GPS data** if available (latitude/longitude)
+3. **Compares dates**: Updates EXIF dates only if they differ (or are missing)
+4. **Compares GPS**: Writes GPS data only if EXIF has no GPS or coordinates differ
 5. **Writes descriptions** if present
-6. **Sets file modification time** to match the photo date
+6. **Sets file modification time** to match the photo date when dates are updated
+
+### Timestamp Handling
+
+- **Dates match exactly**: No date update needed
+- **Timezone difference** (1-14 hours): Preserves EXIF dates by default (local time vs UTC)
+- **Dates differ significantly**: Updates EXIF with JSON dates
+- **No EXIF date**: Writes JSON date to EXIF
+
+Use `--force-tz` to overwrite timezone differences.
+
+### GPS Handling
+
+GPS coordinates are handled **separately** from timestamps:
+
+- **GPS in JSON matches EXIF**: No change
+- **GPS in JSON differs from EXIF**: Updates GPS (even if timezone difference)
+- **GPS in JSON but not in EXIF**: Adds GPS coordinates
+- **No GPS in JSON**: Preserves existing EXIF GPS
 
 ### Timezone Handling
 
@@ -97,7 +115,7 @@ Google stores timestamps in UTC in the JSON files, but your photos may have loca
 - **By default**: Preserves EXIF dates if they differ from JSON by timezone offset (1-14 hours)
 - **With `--force-tz`**: Overwrites with JSON times regardless of timezone
 
-Use `--summary` to see how many files have timezone differences before deciding.
+Note: GPS updates are **independent** of timezone settings. If JSON has GPS data that differs from EXIF, GPS will be updated even when dates are preserved.
 
 ### Video Support
 
@@ -281,20 +299,24 @@ python3 fix_metadata.py '~/Downloads/takeout-20240101.zip'
 ```
 Scanning files...
 Found 2189 media files
-Reading EXIF dates...
+Reading EXIF data...
 Analyzing files...
   Processing 100/2189...
   Processing 200/2189...
   ...
 
 Summary for: Photos from 2024
-========================================
-Files with correct EXIF:      512
-Timezone differences:         1203
-Files needing update:         474
-Files with no JSON:             0
-----------------------------------------
-Total media files:           2189
+==================================================
+Correct (no changes needed):        512
+Need date update only:              120
+Need GPS update only:                45
+Need both date and GPS:             289
+Timezone diff, dates preserved:    1203
+Timezone diff + GPS differs:         12
+No JSON found:                        8
+--------------------------------------------------
+Total needing updates:              466
+Total files:                       2189
 ```
 
 ### Report Output
@@ -305,10 +327,11 @@ python3 fix_metadata.py '~/Takeout/Google Photos/Photos from 2024' --no-extract 
 
 Creates a detailed report with:
 - Summary statistics
-- Files with timezone differences (EXIF vs JSON)
-- Files needing updates
+- Files needing date updates
+- Files needing GPS updates
+- Files needing both date and GPS
+- Timezone differences preserved
 - Files with no matching JSON
-- Sample of correct files
 
 ## Supported File Types
 

@@ -185,8 +185,64 @@ def get_all_exif_dates(directory: Path, media_files: list) -> dict:
             pass
     return dates
 
+def get_all_exif_gps(directory: Path, media_files: list) -> dict:
+    """Get GPS coordinates from EXIF for all media files. Returns dict of {filename: (lat, lon) or None}."""
+    result = subprocess.run(
+        ['exiftool', '-json', '-r', '-GPSLatitude', '-GPSLongitude', '-n', str(directory)],
+        capture_output=True, text=True
+    )
+    
+    gps_data = {}
+    if result.returncode == 0:
+        try:
+            data = json.loads(result.stdout)
+            for item in data:
+                source_file = item.get('SourceFile', '')
+                lat = item.get('GPSLatitude')
+                lon = item.get('GPSLongitude')
+                if source_file:
+                    filename = Path(source_file).name
+                    if lat is not None and lon is not None:
+                        try:
+                            gps_data[filename] = (float(lat), float(lon))
+                        except (ValueError, TypeError):
+                            gps_data[filename] = None
+                    else:
+                        gps_data[filename] = None
+        except:
+            pass
+    return gps_data
+
+def get_current_exif_gps(media_path: Path) -> tuple[float, float] | None:
+    """Get GPS coordinates from EXIF. Returns (lat, lon) or None."""
+    try:
+        result = subprocess.run(
+            ['exiftool', '-GPSLatitude', '-GPSLongitude', '-n', str(media_path)],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split('\n')
+            lat = None
+            lon = None
+            for line in lines:
+                if 'GPS Latitude' in line and ': ' in line:
+                    try:
+                        lat = float(line.split(': ')[-1].strip())
+                    except:
+                        pass
+                elif 'GPS Longitude' in line and ': ' in line:
+                    try:
+                        lon = float(line.split(': ')[-1].strip())
+                    except:
+                        pass
+            if lat is not None and lon is not None:
+                return (lat, lon)
+    except:
+        pass
+    return None
+
 def update_metadata(media_path: Path, json_path: Path, dryrun: bool = False, force: bool = False) -> str:
-    """Update EXIF metadata from JSON file. Returns 'updated', 'skip', 'timezone', or 'error'."""
+    """Update EXIF metadata from JSON file. Returns status string."""
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -206,32 +262,57 @@ def update_metadata(media_path: Path, json_path: Path, dryrun: bool = False, for
     
     current_date = get_current_exif_date(media_path)
     
-    if current_date and current_date == json_date:
-        return 'skip'
-    
-    if current_date and is_timezone_difference(current_date, json_date) and not force:
-        return 'timezone'
-    
     geo = data.get('geoData', {})
     lat = geo.get('latitude', 0.0)
     lon = geo.get('longitude', 0.0)
+    has_json_gps = lat != 0.0 or lon != 0.0
+    
+    current_gps = get_current_exif_gps(media_path)
+    has_exif_gps = current_gps is not None
+    
+    gps_differs = False
+    if has_json_gps and has_exif_gps:
+        exif_lat, exif_lon = current_gps
+        if abs(lat - exif_lat) > 0.0001 or abs(lon - exif_lon) > 0.0001:
+            gps_differs = True
+    elif has_json_gps and not has_exif_gps:
+        gps_differs = True
+    
+    description = data.get('description')
+    
+    dates_match = current_date and current_date == json_date
+    is_tz_diff = current_date and is_timezone_difference(current_date, json_date)
+    
+    if dates_match and not is_tz_diff and not gps_differs and not description:
+        return 'skip'
+    
+    if is_tz_diff and not force and not gps_differs and not description:
+        return 'timezone'
+    
+    needs_date_update = not current_date or (current_date != json_date and (not is_tz_diff or force))
+    needs_gps_update = gps_differs
+    
+    if not needs_date_update and not needs_gps_update and not description:
+        return 'skip'
     
     cmd = ['exiftool', '-overwrite_original']
-    cmd.extend([
-        '-DateTimeOriginal=' + json_date,
-        '-CreateDate=' + json_date,
-        '-ModifyDate=' + json_date,
-    ])
     
-    if media_path.suffix.lower() in ['.mp4', '.mov', '.avi', '.mkv', '.mpg', '.mpeg']:
+    if needs_date_update:
         cmd.extend([
-            '-TrackCreateDate=' + json_date,
-            '-TrackModifyDate=' + json_date,
-            '-MediaCreateDate=' + json_date,
-            '-MediaModifyDate=' + json_date,
+            '-DateTimeOriginal=' + json_date,
+            '-CreateDate=' + json_date,
+            '-ModifyDate=' + json_date,
         ])
+        
+        if media_path.suffix.lower() in ['.mp4', '.mov', '.avi', '.mkv', '.mpg', '.mpeg']:
+            cmd.extend([
+                '-TrackCreateDate=' + json_date,
+                '-TrackModifyDate=' + json_date,
+                '-MediaCreateDate=' + json_date,
+                '-MediaModifyDate=' + json_date,
+            ])
     
-    if lat != 0.0 or lon != 0.0:
+    if needs_gps_update:
         cmd.extend([
             f'-GPSLatitude={lat}',
             f'-GPSLatitudeRef={"N" if lat >= 0 else "S"}',
@@ -239,15 +320,30 @@ def update_metadata(media_path: Path, json_path: Path, dryrun: bool = False, for
             f'-GPSLongitudeRef={"E" if lon >= 0 else "W"}',
         ])
     
-    if data.get('description'):
-        desc = data['description'].replace('"', '\\"')
+    if description:
+        desc = description.replace('"', '\\"')
         cmd.append(f'-Description={desc}')
     
     cmd.append(str(media_path))
     
     if dryrun:
-        print(f"  Would run: {' '.join(cmd)}")
-        return 'updated'
+        parts = []
+        if needs_date_update:
+            parts.append('dates')
+        if needs_gps_update:
+            parts.append('GPS')
+        if description:
+            parts.append('description')
+        print(f"  Would update ({', '.join(parts)}): {media_path.name}")
+    
+    if dryrun:
+        if needs_date_update and needs_gps_update:
+            return 'both'
+        elif needs_date_update:
+            return 'date'
+        elif needs_gps_update:
+            return 'gps'
+        return 'skip'
     
     result = subprocess.run(cmd, capture_output=True, text=True)
     
@@ -255,10 +351,31 @@ def update_metadata(media_path: Path, json_path: Path, dryrun: bool = False, for
         print(f"  exiftool error: {result.stderr}")
         return 'error'
     
-    mtime = int(timestamp)
-    os.utime(media_path, (mtime, mtime))
+    if needs_date_update:
+        mtime = int(timestamp)
+        os.utime(media_path, (mtime, mtime))
     
-    return 'updated'
+    if needs_date_update and needs_gps_update:
+        return 'both'
+    elif needs_date_update:
+        return 'date'
+    elif needs_gps_update:
+        return 'gps'
+    return 'skip'
+
+def get_json_gps(json_path: Path) -> tuple[float, float] | None:
+    """Get GPS coordinates from JSON file. Returns (lat, lon) or None."""
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        geo = data.get('geoData', {})
+        lat = geo.get('latitude', 0.0)
+        lon = geo.get('longitude', 0.0)
+        if lat != 0.0 or lon != 0.0:
+            return (lat, lon)
+    except:
+        pass
+    return None
 
 def get_json_date(json_path: Path) -> str | None:
     """Get photoTakenTime from JSON file as EXIF format string."""
@@ -293,16 +410,20 @@ def analyze_directory(base_dir: Path, progress: bool = False):
     
     if progress:
         print(f"Found {len(media_files)} media files")
-        print("Reading EXIF dates...")
+        print("Reading EXIF data...")
     
     exif_dates = get_all_exif_dates(base_dir, media_files)
+    exif_gps = get_all_exif_gps(base_dir, media_files)
     
     if progress:
         print("Analyzing files...")
     
     correct = []
-    timezone_diff = []
-    need_update = []
+    need_date = []
+    need_gps = []
+    need_both = []
+    timezone_preserved = []
+    tz_gps_diff = []
     no_json = []
     
     for i, media in enumerate(sorted(media_files)):
@@ -311,28 +432,58 @@ def analyze_directory(base_dir: Path, progress: bool = False):
         
         json_file = find_json_for_file(media, all_files)
         exif_date = exif_dates.get(media.name)
+        exif_gps_val = exif_gps.get(media.name)
         
         if json_file:
             json_date = get_json_date(json_file)
+            json_gps = get_json_gps(json_file)
+            
             if json_date:
+                has_json_gps = json_gps is not None
+                has_exif_gps = exif_gps_val is not None
+                
+                gps_differs = False
+                if has_json_gps and has_exif_gps:
+                    json_lat, json_lon = json_gps
+                    exif_lat, exif_lon = exif_gps_val
+                    if abs(json_lat - exif_lat) > 0.0001 or abs(json_lon - exif_lon) > 0.0001:
+                        gps_differs = True
+                elif has_json_gps and not has_exif_gps:
+                    gps_differs = True
+                
                 if not exif_date:
-                    need_update.append((media.name, "No EXIF", json_date))
+                    if gps_differs:
+                        need_both.append((media.name, "No EXIF", json_date, json_gps))
+                    else:
+                        need_date.append((media.name, "No EXIF", json_date))
                 elif exif_date == json_date:
-                    correct.append((media.name, exif_date, json_date))
+                    if gps_differs:
+                        need_gps.append((media.name, exif_date, json_gps, exif_gps_val))
+                    else:
+                        correct.append((media.name, exif_date))
                 elif is_timezone_difference(exif_date, json_date):
-                    timezone_diff.append((media.name, exif_date, json_date))
+                    if gps_differs:
+                        tz_gps_diff.append((media.name, exif_date, json_date, json_gps, exif_gps_val))
+                    else:
+                        timezone_preserved.append((media.name, exif_date, json_date))
                 else:
-                    need_update.append((media.name, exif_date, json_date))
+                    if gps_differs:
+                        need_both.append((media.name, exif_date, json_date, json_gps))
+                    else:
+                        need_date.append((media.name, exif_date, json_date))
             else:
-                need_update.append((media.name, exif_date or "No EXIF", "No date in JSON"))
+                need_date.append((media.name, exif_date or "No EXIF", "No date in JSON"))
         else:
-            no_json.append((media.name, exif_date or "No EXIF", "No JSON"))
+            no_json.append((media.name, exif_date or "No EXIF"))
     
     return {
         'total': len(media_files),
         'correct': correct,
-        'timezone_diff': timezone_diff,
-        'need_update': need_update,
+        'need_date': need_date,
+        'need_gps': need_gps,
+        'need_both': need_both,
+        'timezone_preserved': timezone_preserved,
+        'tz_gps_diff': tz_gps_diff,
         'no_json': no_json,
     }
 
@@ -342,18 +493,26 @@ def print_summary(base_dir: Path):
     
     total = stats['total']
     correct = len(stats['correct'])
-    timezone_diff = len(stats['timezone_diff'])
-    need_update = len(stats['need_update'])
+    need_date = len(stats['need_date'])
+    need_gps = len(stats['need_gps'])
+    need_both = len(stats['need_both'])
+    tz_preserved = len(stats['timezone_preserved'])
+    tz_gps_diff = len(stats['tz_gps_diff'])
     no_json = len(stats['no_json'])
     
     print(f"\nSummary for: {base_dir.name}")
-    print("=" * 40)
-    print(f"Files with correct EXIF:    {correct:>5}")
-    print(f"Timezone differences:       {timezone_diff:>5}")
-    print(f"Files needing update:       {need_update:>5}")
-    print(f"Files with no JSON:         {no_json:>5}")
-    print(f"{'-' * 40}")
-    print(f"Total media files:          {total:>5}")
+    print("=" * 50)
+    print(f"Correct (no changes needed):        {correct:>5}")
+    print(f"Need date update only:              {need_date:>5}")
+    print(f"Need GPS update only:               {need_gps:>5}")
+    print(f"Need both date and GPS:            {need_both:>5}")
+    print(f"Timezone diff, dates preserved:     {tz_preserved:>5}")
+    print(f"Timezone diff + GPS differs:        {tz_gps_diff:>5}")
+    print(f"No JSON found:                      {no_json:>5}")
+    print("-" * 50)
+    total_needing_update = need_date + need_gps + need_both + tz_gps_diff
+    print(f"Total needing updates:              {total_needing_update:>5}")
+    print(f"Total files:                        {total:>5}")
 
 def write_report(base_dir: Path, output_file: str | None = None):
     """Write detailed report to file."""
@@ -368,42 +527,82 @@ def write_report(base_dir: Path, output_file: str | None = None):
         f.write("=" * 80 + "\n\n")
         
         f.write(f"SUMMARY\n")
-        f.write("-" * 40 + "\n")
-        f.write(f"Total files:           {stats['total']:>5}\n")
-        f.write(f"Correct EXIF:          {len(stats['correct']):>5}\n")
-        f.write(f"Timezone differences:  {len(stats['timezone_diff']):>5}\n")
-        f.write(f"Need update:           {len(stats['need_update']):>5}\n")
-        f.write(f"No JSON:               {len(stats['no_json']):>5}\n\n")
+        f.write("-" * 50 + "\n")
+        f.write(f"Total files:                    {stats['total']:>5}\n")
+        f.write(f"Correct (no changes):           {len(stats['correct']):>5}\n")
+        f.write(f"Need date update:               {len(stats['need_date']):>5}\n")
+        f.write(f"Need GPS update:                {len(stats['need_gps']):>5}\n")
+        f.write(f"Need both date and GPS:         {len(stats['need_both']):>5}\n")
+        f.write(f"Timezone preserved:            {len(stats['timezone_preserved']):>5}\n")
+        f.write(f"Timezone + GPS diff:            {len(stats['tz_gps_diff']):>5}\n")
+        f.write(f"No JSON:                        {len(stats['no_json']):>5}\n")
+        total_updates = len(stats['need_date']) + len(stats['need_gps']) + len(stats['need_both']) + len(stats['tz_gps_diff'])
+        f.write(f"{'-' * 50}\n")
+        f.write(f"Total needing updates:          {total_updates:>5}\n\n")
         
-        if stats['timezone_diff']:
-            f.write(f"TIMEZONE DIFFERENCES ({len(stats['timezone_diff'])})\n")
+        if stats['need_date']:
+            f.write(f"FILES NEEDING DATE UPDATE ({len(stats['need_date'])})\n")
             f.write("-" * 80 + "\n")
-            f.write(f"{'Filename':<50} {'EXIF':<20} {'JSON':<20}\n")
+            f.write(f"{'Filename':<50} {'EXIF Date':<20} {'JSON Date':<20}\n")
             f.write("-" * 80 + "\n")
-            for name, exif_date, json_date in stats['timezone_diff']:
+            for item in stats['need_date']:
+                name, exif_date, json_date = item[:3]
                 f.write(f"{name:<50} {exif_date:<20} {json_date:<20}\n")
             f.write("\n")
         
-        if stats['need_update']:
-            f.write(f"FILES NEEDING UPDATE ({len(stats['need_update'])})\n")
+        if stats['need_gps']:
+            f.write(f"FILES NEEDING GPS UPDATE ({len(stats['need_gps'])})\n")
+            f.write("-" * 80 + "\n")
+            f.write(f"{'Filename':<50} {'EXIF GPS':<25} {'JSON GPS':<25}\n")
+            f.write("-" * 80 + "\n")
+            for item in stats['need_gps']:
+                name, exif_date, json_gps, exif_gps = item
+                exif_str = f"{exif_gps[0]:.4f}, {exif_gps[1]:.4f}" if exif_gps else "None"
+                json_str = f"{json_gps[0]:.4f}, {json_gps[1]:.4f}" if json_gps else "None"
+                f.write(f"{name:<50} {exif_str:<25} {json_str:<25}\n")
+            f.write("\n")
+        
+        if stats['need_both']:
+            f.write(f"FILES NEEDING DATE AND GPS UPDATE ({len(stats['need_both'])})\n")
+            f.write("-" * 80 + "\n")
+            f.write(f"{'Filename':<50} {'EXIF Date':<20} {'JSON Date':<20}\n")
+            f.write("-" * 80 + "\n")
+            for item in stats['need_both']:
+                name, exif_date, json_date = item[:3]
+                f.write(f"{name:<50} {exif_date:<20} {json_date:<20}\n")
+            f.write("\n")
+        
+        if stats['tz_gps_diff']:
+            f.write(f"TIMEZONE DIFF + GPS DIFFERS ({len(stats['tz_gps_diff'])})\n")
+            f.write(f"(Dates will be preserved, GPS will be updated)\n")
+            f.write("-" * 80 + "\n")
+            f.write(f"{'Filename':<50} {'EXIF Date':<20}\n")
+            f.write("-" * 80 + "\n")
+            for item in stats['tz_gps_diff']:
+                name, exif_date = item[0], item[1]
+                f.write(f"{name:<50} {exif_date:<20}\n")
+            f.write("\n")
+        
+        if stats['timezone_preserved']:
+            f.write(f"TIMEZONE DIFFERENCES (PRESERVED) ({len(stats['timezone_preserved'])})\n")
             f.write("-" * 80 + "\n")
             f.write(f"{'Filename':<50} {'EXIF':<20} {'JSON':<20}\n")
             f.write("-" * 80 + "\n")
-            for name, exif_date, json_date in stats['need_update']:
+            for name, exif_date, json_date in stats['timezone_preserved']:
                 f.write(f"{name:<50} {exif_date:<20} {json_date:<20}\n")
             f.write("\n")
         
         if stats['no_json']:
             f.write(f"FILES WITH NO JSON ({len(stats['no_json'])})\n")
             f.write("-" * 80 + "\n")
-            for name, exif_date, _ in stats['no_json']:
+            for name, exif_date in stats['no_json']:
                 f.write(f"{name:<50} {exif_date}\n")
             f.write("\n")
         
         if stats['correct']:
-            f.write(f"FILES WITH CORRECT EXIF ({len(stats['correct'])})\n")
+            f.write(f"FILES WITH CORRECT METADATA ({len(stats['correct'])})\n")
             f.write("-" * 80 + "\n")
-            for name, exif_date, json_date in stats['correct'][:10]:
+            for name, exif_date in stats['correct'][:10]:
                 f.write(f"{name:<50} {exif_date}\n")
             if len(stats['correct']) > 10:
                 f.write(f"... and {len(stats['correct']) - 10} more\n")
@@ -428,9 +627,11 @@ def process_directory(base_dir: Path, dryrun: bool = False, force_tz: bool = Fal
     
     print(f"Found {len(media_files)} media files")
     
-    updated = 0
+    updated_date = 0
+    updated_gps = 0
+    updated_both = 0
     skipped = 0
-    timezone_skipped = 0
+    tz_skip = 0
     errors = 0
     
     for media in media_files:
@@ -440,21 +641,51 @@ def process_directory(base_dir: Path, dryrun: bool = False, force_tz: bool = Fal
             if result == 'skip':
                 skipped += 1
             elif result == 'timezone':
-                timezone_skipped += 1
-            elif result == 'updated':
+                tz_skip += 1
+            elif result == 'gps':
+                updated_gps += 1
+                if not dryrun:
+                    print(f"GPS updated: {media.name}")
+            elif result == 'date':
+                updated_date += 1
+                if not dryrun:
+                    print(f"Date updated: {media.name}")
+            elif result == 'both':
+                updated_both += 1
                 if not dryrun:
                     print(f"Updated: {media.name}")
-                updated += 1
             else:
                 errors += 1
         else:
             skipped += 1
             print(f"  No JSON found for: {media.name}")
     
-    msg = f"\nDone: {updated} {'would be ' if dryrun else ''}updated"
-    if timezone_skipped:
-        msg += f", {timezone_skipped} timezone differences skipped"
-    msg += f", {skipped} already correct, {errors} errors"
+    msg = f"\nSummary: "
+    if dryrun:
+        msg = f"\nWould update: "
+    parts = []
+    if updated_date:
+        parts.append(f"{updated_date} date")
+    if updated_gps:
+        parts.append(f"{updated_gps} GPS")
+    if updated_both:
+        parts.append(f"{updated_both} date+GPS")
+    if tz_skip:
+        parts.append(f"{tz_skip} timezone skip")
+    if skipped:
+        parts.append(f"{skipped} correct")
+    if errors:
+        parts.append(f"{errors} errors")
+    
+    if parts:
+        msg += ", ".join(parts)
+    else:
+        msg += "no changes needed"
+    
+    total_updates = updated_date + updated_gps + updated_both
+    if total_updates:
+        msg += f"\nTotal files {'would be ' if dryrun else ''}updated: {total_updates}"
+    
     print(msg)
 
 def process_zip(zip_path: Path, extract_dir: Path, dryrun: bool = False, force_tz: bool = False):

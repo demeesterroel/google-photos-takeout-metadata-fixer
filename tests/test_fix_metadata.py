@@ -142,8 +142,10 @@ class TestAnalyzeDirectory:
         stats = analyze_directory(TEST_DATA_DIR, progress=False)
         assert "total" in stats
         assert "correct" in stats
-        assert "timezone_diff" in stats
-        assert "need_update" in stats
+        assert "timezone_preserved" in stats
+        assert "need_date" in stats
+        assert "need_gps" in stats
+        assert "need_both" in stats
         assert "no_json" in stats
     
     def test_analyze_counts_correctly(self, setup_test_data):

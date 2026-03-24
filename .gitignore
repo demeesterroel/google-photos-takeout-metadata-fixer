@@ -1,0 +1,22 @@
+# Test/output files
+*_report.txt
+*.pyc
+__pycache__/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# User data folders (sample/test data)
+Takeout/
+takeout/
+input/
+output/
+
+# Development helpers
+compare_dates.py
